@@ -1,0 +1,1026 @@
+import { useState, createContext, useContext, useRef, useEffect } from "react";
+
+// ── THEME ────────────────────────────────────────────────────
+const T = {
+  bg: "#0D0F17", card: "#161926", card2: "#1E2235",
+  border: "#252A3E", primary: "#F5A623", primaryDark: "#D4891A",
+  success: "#00C566", danger: "#FF4757", muted: "#7B82A0",
+  text: "#FFFFFF", text2: "#C8CEDE",
+};
+
+const DIST = {
+  Sabanalarga:55,Baranoa:25,Luruaco:65,Repelón:80,Manatí:70,
+  Ponedera:55,"Santo Tomás":35,Sabanagrande:30,"Palmar de Varela":40,
+  Piojó:50,Tubará:35,Usiacurí:45,Arjona:30,Turbaco:15,
+  Mahates:45,Clemencia:50,"San Estanislao":55,Villanueva:60,Mompox:250,
+  Ciénaga:35,"Pueblo Viejo":45,"Zona Bananera":55,Aracataca:85,Fundación:110,
+  Barranquilla:0,Cartagena:0,"Santa Marta":0,
+};
+
+const DEPTOS = {
+  Atlántico:{ cap:"Barranquilla", pueblos:["Sabanalarga","Baranoa","Luruaco","Repelón","Manatí","Ponedera","Santo Tomás","Sabanagrande","Palmar de Varela","Piojó","Tubará","Usiacurí"] },
+  Bolívar:  { cap:"Cartagena",    pueblos:["Arjona","Turbaco","Mahates","Clemencia","San Estanislao","Villanueva","Mompox"] },
+  Magdalena:{ cap:"Santa Marta",  pueblos:["Ciénaga","Pueblo Viejo","Zona Bananera","Aracataca","Fundación"] },
+};
+
+const VI = { Sedan:"🚗", Camioneta:"🛻", Van:"🚐", Moto:"🏍️" };
+
+function priceSug(origen, veh="Sedan", hora="") {
+  const km = DIST[origen]||50;
+  let b = km*160;
+  if(veh==="Camioneta") b*=1.10;
+  if(veh==="Van") b*=0.95;
+  const h = hora ? parseInt(hora.split(":")[0]) : 7;
+  if((h>=5&&h<8)||(h>=17&&h<20)) b*=1.10;
+  if(h>=21||h<5) b*=1.15;
+  return Math.round(b/500)*500;
+}
+
+const SEED = [
+  {id:"r1",nombre:"Carlos M.",origen:"Sabanalarga",destino:"Barranquilla",hora:"05:30",cupos:3,precio:8500,vehiculo:"Sedan",cal:4.8,depto:"Atlántico",rol:"conductor",verificado:true,fecha:"Hoy"},
+  {id:"r2",nombre:"Luis R.",origen:"Baranoa",destino:"Barranquilla",hora:"06:00",cupos:2,precio:4000,vehiculo:"Moto",cal:4.6,depto:"Atlántico",rol:"conductor",verificado:true,fecha:"Hoy"},
+  {id:"r3",nombre:"Pedro S.",origen:"Luruaco",destino:"Barranquilla",hora:"06:30",cupos:4,precio:10000,vehiculo:"Van",cal:4.9,depto:"Atlántico",rol:"conductor",verificado:true,fecha:"Hoy"},
+  {id:"r4",nombre:"Ana P.",origen:"Barranquilla",destino:"Sabanalarga",hora:"07:00",cupos:1,precio:8500,vehiculo:"Sedan",cal:4.7,depto:"Atlántico",rol:"pasajero",verificado:true,fecha:"Hoy"},
+  {id:"r5",nombre:"Andrés P.",origen:"Arjona",destino:"Cartagena",hora:"06:00",cupos:3,precio:4000,vehiculo:"Sedan",cal:4.7,depto:"Bolívar",rol:"conductor",verificado:true,fecha:"Hoy"},
+  {id:"r6",nombre:"Jorge L.",origen:"Turbaco",destino:"Cartagena",hora:"05:45",cupos:2,precio:3000,vehiculo:"Sedan",cal:4.5,depto:"Bolívar",rol:"conductor",verificado:false,fecha:"Hoy"},
+  {id:"r7",nombre:"Diana V.",origen:"Ciénaga",destino:"Santa Marta",hora:"06:15",cupos:3,precio:5000,vehiculo:"Sedan",cal:4.9,depto:"Magdalena",rol:"conductor",verificado:true,fecha:"Hoy"},
+  {id:"r8",nombre:"Sofía R.",origen:"Santa Marta",destino:"Fundación",hora:"08:00",cupos:2,precio:14000,vehiculo:"Sedan",cal:4.8,depto:"Magdalena",rol:"pasajero",verificado:false,fecha:"Mañana"},
+];
+
+const Ctx = createContext(null);
+const useApp = () => useContext(Ctx);
+
+const css = `
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0D0F17;color:#fff;font-family:'Plus Jakarta Sans',sans-serif}
+  input,select,textarea,button{font-family:inherit}
+  input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes slideRight{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
+  @keyframes pp{0%,100%{box-shadow:0 0 0 0 #FF475788}60%{box-shadow:0 0 0 16px transparent}}
+  @keyframes ping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.4);opacity:0}}
+  .fade{animation:fadeIn .35s ease forwards}
+  .sr{animation:slideRight .3s ease forwards}
+  .pp{animation:pp 1.5s infinite}
+  a{color:inherit;text-decoration:none}
+  ::-webkit-scrollbar{width:6px}
+  ::-webkit-scrollbar-track{background:#161926}
+  ::-webkit-scrollbar-thumb{background:#252A3E;border-radius:3px}
+`;
+
+// shared styles
+const inp = {width:"100%",background:T.card2,border:`1.5px solid ${T.border}`,borderRadius:12,padding:"13px 16px",color:T.text,fontSize:15,outline:"none"};
+const lbl = {display:"block",color:T.muted,fontSize:12,fontWeight:600,marginBottom:6,textTransform:"uppercase",letterSpacing:.6};
+
+function Btn({label,onClick,color=T.primary,outline=false,disabled=false,icon,size="md",style={},full=true}){
+  return(
+    <button onClick={onClick} disabled={disabled} style={{
+      width:full?"100%":"auto",padding:size==="sm"?"9px 18px":"14px 24px",
+      borderRadius:12,background:outline||disabled?"transparent":color,
+      border:`2px solid ${disabled?T.border:color}`,
+      color:outline?color:disabled?T.muted:"#0D0F17",
+      fontSize:size==="sm"?13:15,fontWeight:700,cursor:disabled?"not-allowed":"pointer",
+      display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+      opacity:disabled?.5:1,transition:"all .15s",...style
+    }}>
+      {icon&&<span style={{fontSize:18}}>{icon}</span>}{label}
+    </button>
+  );
+}
+
+function Stars({v=5,size=12}){
+  return <span style={{color:T.primary,fontSize:size}}>{"★".repeat(Math.floor(v))}{"☆".repeat(5-Math.floor(v))} <span style={{color:T.muted,fontSize:size-1}}>{v}</span></span>;
+}
+
+function Badge({ok}){
+  return ok
+    ? <span style={{background:"#00C56620",color:T.success,borderRadius:8,padding:"2px 10px",fontSize:11,fontWeight:700}}>✔ Verificado</span>
+    : <span style={{background:"#FF475720",color:T.danger,borderRadius:8,padding:"2px 10px",fontSize:11,fontWeight:700}}>⚠ Sin verificar</span>;
+}
+
+function Tag({text,color=T.primary}){
+  return <span style={{background:color+"22",color,borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:700}}>{text}</span>;
+}
+
+function Avatar({size=44,name=""}){
+  const initials = name ? name.slice(0,1).toUpperCase() : "?";
+  return(
+    <div style={{width:size,height:size,borderRadius:"50%",background:`linear-gradient(135deg,${T.primary},${T.success})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.38,fontWeight:700,color:"#0D0F17",flexShrink:0}}>
+      {initials}
+    </div>
+  );
+}
+
+// ── PANIC ─────────────────────────────────────────────────────
+function PanicBtn(){
+  const [hold,setHold]=useState(false);
+  const [cnt,setCnt]=useState(3);
+  const [sent,setSent]=useState(false);
+  const ref=useRef(null);
+  const start=()=>{
+    setHold(true);setCnt(3);
+    ref.current=setInterval(()=>setCnt(p=>{
+      if(p<=1){clearInterval(ref.current);setSent(true);return 0;}
+      return p-1;
+    }),1000);
+  };
+  const stop=()=>{setHold(false);clearInterval(ref.current);if(!sent)setCnt(3);};
+  if(sent) return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.97)",zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32,textAlign:"center"}}>
+      <div style={{fontSize:72,marginBottom:20}}>🚨</div>
+      <h2 style={{fontSize:28,fontWeight:800,color:T.danger}}>¡Alerta enviada!</h2>
+      <p style={{color:T.text2,marginTop:12,lineHeight:1.9,fontSize:15}}>
+        Tu ubicación GPS se comparte en tiempo real con:<br/>
+        <strong style={{color:T.text}}>Contactos de emergencia + Central Colectivo 24h</strong>
+      </p>
+      <div style={{background:T.card,borderRadius:16,padding:20,marginTop:20,width:"100%",maxWidth:360,border:`1px solid ${T.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${T.border}`}}><span style={{color:T.muted}}>Estado</span><span style={{color:T.danger,fontWeight:700}}>🔴 Activo</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0"}}><span style={{color:T.muted}}>Emergencias</span><span style={{color:T.text,fontWeight:700}}>📞 112</span></div>
+      </div>
+      <Btn label="Cancelar alerta" onClick={()=>{setSent(false);setHold(false);setCnt(3);}} color={T.danger} style={{marginTop:24,maxWidth:300}}/>
+    </div>
+  );
+  return(
+    <div style={{position:"fixed",bottom:32,right:28,zIndex:500,userSelect:"none"}}>
+      {hold&&<div style={{position:"absolute",bottom:68,right:0,whiteSpace:"nowrap",background:T.danger,borderRadius:10,padding:"7px 14px",color:"#fff",fontSize:12,fontWeight:700}}>Suelta para cancelar · {cnt}s</div>}
+      <div style={{position:"relative",width:56,height:56}}>
+        {hold&&<div style={{position:"absolute",inset:0,borderRadius:"50%",background:T.danger,opacity:.35,animation:"ping 1s infinite"}}/>}
+        <button onMouseDown={start} onMouseUp={stop} onMouseLeave={stop} onTouchStart={e=>{e.preventDefault();start();}} onTouchEnd={stop}
+          className={hold?"":"pp"}
+          style={{width:56,height:56,borderRadius:"50%",background:`linear-gradient(135deg,${T.danger},#c0392b)`,border:"3px solid rgba(255,255,255,.15)",cursor:"pointer",fontSize:24,boxShadow:`0 4px 24px ${T.danger}77`,position:"relative",zIndex:1}}>🆘</button>
+      </div>
+      <p style={{color:T.muted,fontSize:9,textAlign:"center",marginTop:4}}>Mantén 3s</p>
+    </div>
+  );
+}
+
+// ── NAV ───────────────────────────────────────────────────────
+function Nav(){
+  const {page,go,user}=useApp();
+  const [menuOpen,setMenuOpen]=useState(false);
+  return(
+    <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:200,background:"rgba(13,15,23,.95)",backdropFilter:"blur(12px)",borderBottom:`1px solid ${T.border}`}}>
+      <div style={{maxWidth:1200,margin:"0 auto",padding:"0 24px",height:64,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        {/* Logo */}
+        <div onClick={()=>go("landing")} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+          <div style={{width:36,height:36,borderRadius:10,background:`linear-gradient(135deg,${T.primary},${T.primaryDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🚌</div>
+          <span style={{fontWeight:800,fontSize:20,color:T.primary}}>Colectivo</span>
+        </div>
+        {/* Desktop nav */}
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          {user ? (
+            <>
+              {[["home","🏠 Inicio"],["rutas","🔍 Rutas"],["publicar","➕ Publicar"],["mis-rutas","📋 Mis rutas"]].map(([p,l])=>(
+                <button key={p} onClick={()=>go(p)} style={{padding:"8px 14px",borderRadius:10,background:page===p?T.primary+"22":"none",border:`1px solid ${page===p?T.primary:T.border}`,color:page===p?T.primary:T.muted,fontSize:13,fontWeight:600,cursor:"pointer"}}>{l}</button>
+              ))}
+              <div onClick={()=>go("perfil")} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 14px",borderRadius:10,border:`1px solid ${T.border}`,cursor:"pointer",background:T.card}}>
+                <Avatar size={28} name={user.nombre}/>
+                <span style={{fontSize:13,fontWeight:600}}>{user.nombre.split(" ")[0]}</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <button onClick={()=>go("login")} style={{padding:"9px 20px",borderRadius:10,background:"none",border:`1px solid ${T.border}`,color:T.text2,fontSize:14,fontWeight:600,cursor:"pointer"}}>Ingresar</button>
+              <button onClick={()=>go("registro")} style={{padding:"9px 20px",borderRadius:10,background:T.primary,border:`2px solid ${T.primary}`,color:"#0D0F17",fontSize:14,fontWeight:700,cursor:"pointer"}}>Registrarse</button>
+            </>
+          )}
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+// ── ROUTE CARD ────────────────────────────────────────────────
+function RouteCard({r,onTap,compact=false}){
+  return(
+    <div onClick={onTap} style={{background:T.card,borderRadius:16,border:`1px solid ${T.border}`,padding:compact?14:18,cursor:"pointer",transition:"border-color .15s"}}
+      onMouseEnter={e=>e.currentTarget.style.borderColor=T.primary+"66"}
+      onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:T.success}}/>
+            <span style={{fontWeight:700,fontSize:compact?13:15}}>{r.origen}</span>
+            <span style={{color:T.muted,fontSize:12}}>→</span>
+            <div style={{width:8,height:8,borderRadius:2,background:T.primary}}/>
+            <span style={{fontWeight:700,fontSize:compact?13:15}}>{r.destino}</span>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <span style={{color:T.muted,fontSize:12}}>⏰ {r.hora}</span>
+            <span style={{color:T.muted,fontSize:12}}>·</span>
+            <span style={{color:T.muted,fontSize:12}}>{DIST[r.origen]||"?"}km</span>
+            <span style={{color:T.muted,fontSize:12}}>·</span>
+            <span style={{color:T.muted,fontSize:12}}>{r.fecha}</span>
+          </div>
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <p style={{fontWeight:800,fontSize:compact?15:18,color:T.primary}}>${r.precio.toLocaleString()}</p>
+          <p style={{color:T.muted,fontSize:11}}>por cupo</p>
+        </div>
+      </div>
+      <div style={{height:1,background:T.border,marginBottom:12}}/>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <Avatar size={32} name={r.nombre}/>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <p style={{fontSize:13,fontWeight:600}}>{r.nombre}</p>
+              {r.verificado&&<span style={{color:T.success,fontSize:11}}>✔</span>}
+            </div>
+            <Stars v={r.cal}/>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:18}}>{VI[r.vehiculo]||"🚗"}</span>
+          {r.rol==="conductor"&&r.cupos&&<span style={{color:T.muted,fontSize:12}}>{r.cupos} cupos</span>}
+          <Tag text={r.rol==="conductor"?"Conductor":"Pasajero"} color={r.rol==="conductor"?T.primary:T.success}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PAGES ─────────────────────────────────────────────────────
+
+function Landing(){
+  const {go}=useApp();
+  return(
+    <div style={{minHeight:"100vh",paddingTop:64}}>
+      {/* Hero */}
+      <div style={{background:"radial-gradient(ellipse 80% 50% at 50% -10%,#2A1800,#0D0F17)",padding:"80px 24px 60px",textAlign:"center"}}>
+        <div style={{maxWidth:760,margin:"0 auto"}} className="fade">
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,background:T.primary+"18",border:`1px solid ${T.primary}33`,borderRadius:20,padding:"6px 16px",marginBottom:24}}>
+            <span style={{fontSize:14}}>🚌</span>
+            <span style={{color:T.primary,fontSize:13,fontWeight:600}}>Atlántico · Bolívar · Magdalena</span>
+          </div>
+          <h1 style={{fontSize:"clamp(32px,5vw,60px)",fontWeight:800,lineHeight:1.15,marginBottom:20}}>
+            El transporte inteligente<br/>
+            <span style={{color:T.primary}}>del Caribe colombiano</span>
+          </h1>
+          <p style={{color:T.text2,fontSize:"clamp(15px,2vw,18px)",lineHeight:1.7,maxWidth:560,margin:"0 auto 36px"}}>
+            Conecta conductores y pasajeros en rutas pueblo-ciudad. Publica tu ruta, negocia el precio y viaja seguro.
+          </p>
+          <div style={{display:"flex",gap:14,justifyContent:"center",flexWrap:"wrap"}}>
+            <Btn label="Buscar cupo ahora" onClick={()=>go("rutas")} icon="🔍" full={false} style={{padding:"14px 32px",fontSize:16}}/>
+            <Btn label="Publicar mi ruta" onClick={()=>go("publicar")} icon="🗺️" outline full={false} style={{padding:"14px 32px",fontSize:16}}/>
+          </div>
+          <div style={{display:"flex",justifyContent:"center",gap:32,marginTop:48,flexWrap:"wrap"}}>
+            {[["🚗","Conductores","Gana dinero en tu ruta diaria"],["🙋","Pasajeros","Encuentra cupo cómodo y barato"],["🆘","Seguridad","Botón de pánico + verificación"]].map(([icon,title,sub])=>(
+              <div key={title} style={{textAlign:"center",maxWidth:160}}>
+                <div style={{fontSize:28,marginBottom:8}}>{icon}</div>
+                <p style={{fontWeight:700,marginBottom:4}}>{title}</p>
+                <p style={{color:T.muted,fontSize:13}}>{sub}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Rutas destacadas */}
+      <div style={{maxWidth:1200,margin:"0 auto",padding:"48px 24px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+          <div>
+            <h2 style={{fontSize:22,fontWeight:800}}>Rutas disponibles ahora</h2>
+            <p style={{color:T.muted,marginTop:4,fontSize:14}}>Activas en los 3 departamentos</p>
+          </div>
+          <button onClick={()=>go("rutas")} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 18px",color:T.primary,fontSize:13,fontWeight:600,cursor:"pointer"}}>Ver todas →</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
+          {SEED.slice(0,6).map(r=><RouteCard key={r.id} r={r} onTap={()=>go("detalle",r)} compact/>)}
+        </div>
+      </div>
+
+      {/* Cómo funciona */}
+      <div style={{background:T.card,borderTop:`1px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,padding:"48px 24px"}}>
+        <div style={{maxWidth:1000,margin:"0 auto"}}>
+          <h2 style={{fontSize:22,fontWeight:800,textAlign:"center",marginBottom:8}}>¿Cómo funciona?</h2>
+          <p style={{textAlign:"center",color:T.muted,marginBottom:40,fontSize:14}}>Simple, rápido y seguro</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:24}}>
+            {[
+              ["1","Regístrate","Crea tu cuenta con celular y foto de verificación"],
+              ["2","Publica o busca","Como conductor o pasajero, publica tu ruta o busca cupo"],
+              ["3","Negocia el precio","Ambas partes acuerdan el valor del viaje"],
+              ["4","Viaja seguro","Botón de pánico y usuarios verificados"],
+            ].map(([num,title,desc])=>(
+              <div key={num} style={{textAlign:"center",padding:20}}>
+                <div style={{width:48,height:48,borderRadius:"50%",background:T.primary+"22",border:`2px solid ${T.primary}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:800,color:T.primary,margin:"0 auto 16px"}}>{num}</div>
+                <p style={{fontWeight:700,marginBottom:8}}>{title}</p>
+                <p style={{color:T.muted,fontSize:13,lineHeight:1.6}}>{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* CTA */}
+      <div style={{textAlign:"center",padding:"60px 24px"}}>
+        <h2 style={{fontSize:28,fontWeight:800,marginBottom:12}}>¿Listo para empezar?</h2>
+        <p style={{color:T.muted,marginBottom:28,fontSize:15}}>Únete a la plataforma de transporte del Caribe colombiano</p>
+        <Btn label="Crear cuenta gratis 🚀" onClick={()=>go("registro")} full={false} style={{padding:"16px 40px",fontSize:16}}/>
+      </div>
+
+      {/* Footer */}
+      <footer style={{background:T.card,borderTop:`1px solid ${T.border}`,padding:"28px 24px",textAlign:"center"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:12}}>
+          <div style={{width:28,height:28,borderRadius:8,background:T.primary,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🚌</div>
+          <span style={{fontWeight:800,color:T.primary}}>Colectivo</span>
+        </div>
+        <p style={{color:T.muted,fontSize:13}}>Tu ruta, tu cupo, tu precio · Atlántico · Bolívar · Magdalena</p>
+        <p style={{color:T.muted,fontSize:12,marginTop:8}}>© 2025 Colectivo SAS · Barranquilla, Colombia</p>
+      </footer>
+    </div>
+  );
+}
+
+function Login(){
+  const {go,setUser}=useApp();
+  const [step,setStep]=useState(1);
+  const [tel,setTel]=useState("");
+  const [otp,setOtp]=useState(["","","","","",""]);
+  const refs=useRef([]);
+  const setD=(i,v)=>{
+    const n=[...otp];n[i]=v.replace(/\D/,"").slice(-1);setOtp(n);
+    if(v&&i<5)refs.current[i+1]?.focus();
+  };
+  if(step===2) return(
+    <div style={{minHeight:"100vh",paddingTop:64,display:"flex",alignItems:"center",justifyContent:"center",padding:"80px 24px"}}>
+      <div style={{width:"100%",maxWidth:440}} className="fade">
+        <button onClick={()=>setStep(1)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:14,marginBottom:24,display:"flex",alignItems:"center",gap:6}}>← Volver</button>
+        <h1 style={{fontSize:28,fontWeight:800,marginBottom:6}}>Código de verificación</h1>
+        <p style={{color:T.muted,marginBottom:28,fontSize:14}}>Enviamos un SMS a <strong style={{color:T.text}}>+57 {tel}</strong></p>
+        <div style={{display:"flex",gap:10,justifyContent:"center",marginBottom:28}}>
+          {otp.map((v,i)=>(
+            <input key={i} ref={el=>refs.current[i]=el} maxLength={1} value={v}
+              onChange={e=>setD(i,e.target.value)}
+              onKeyDown={e=>{if(e.key==="Backspace"&&!v&&i>0)refs.current[i-1]?.focus();}}
+              style={{width:52,height:62,textAlign:"center",fontSize:26,fontWeight:700,background:T.card2,border:`2px solid ${v?T.primary:T.border}`,borderRadius:14,color:T.text,outline:"none"}}/>
+          ))}
+        </div>
+        <Btn label="Verificar y entrar" onClick={()=>{if(otp.join("").length===6){setUser({nombre:"Usuario",tel,rol:"pasajero",depto:"Atlántico",verificado:true});go("home");}}} disabled={otp.join("").length<6}/>
+        <p style={{textAlign:"center",color:T.muted,fontSize:13,marginTop:16}}>Demo: <span style={{color:T.primary,cursor:"pointer"}} onClick={()=>setOtp(["1","2","3","4","5","6"])}>Auto-rellenar código</span></p>
+      </div>
+    </div>
+  );
+  return(
+    <div style={{minHeight:"100vh",paddingTop:64,display:"flex",alignItems:"center",justifyContent:"center",padding:"80px 24px"}}>
+      <div style={{width:"100%",maxWidth:440}} className="fade">
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{width:64,height:64,borderRadius:20,background:T.primary,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,margin:"0 auto 16px"}}>🚌</div>
+          <h1 style={{fontSize:28,fontWeight:800,marginBottom:8}}>Bienvenido a Colectivo</h1>
+          <p style={{color:T.muted,fontSize:14}}>Ingresa con tu número de celular</p>
+        </div>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:16,marginBottom:24,display:"flex",gap:10}}>
+          <span style={{fontSize:18}}>🔒</span>
+          <p style={{color:T.text2,fontSize:13,lineHeight:1.5}}>Verificamos tu identidad con código SMS en cada sesión para garantizar la seguridad de todos.</p>
+        </div>
+        <label style={lbl}>Tu número de celular</label>
+        <div style={{display:"flex",gap:10,marginBottom:24}}>
+          <div style={{...inp,width:88,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",color:T.muted,fontSize:13}}>🇨🇴 +57</div>
+          <input placeholder="300 000 0000" type="tel" value={tel} onChange={e=>setTel(e.target.value.replace(/\D/,""))} style={{...inp,flex:1}}/>
+        </div>
+        <Btn label="Enviar código SMS" onClick={()=>tel.length>=7&&setStep(2)} disabled={tel.length<7}/>
+        <p style={{textAlign:"center",marginTop:20,fontSize:14,color:T.muted}}>¿Sin cuenta? <span style={{color:T.primary,cursor:"pointer",fontWeight:600}} onClick={()=>go("registro")}>Regístrate aquí</span></p>
+      </div>
+    </div>
+  );
+}
+
+function Registro(){
+  const {go,setUser}=useApp();
+  const [step,setStep]=useState(1);
+  const [form,setForm]=useState({tel:"",nombre:"",rol:"",depto:"Atlántico"});
+  const [otp,setOtp]=useState(["","","","","",""]);
+  const refs=useRef([]);
+  const setD=(i,v)=>{const n=[...otp];n[i]=v.replace(/\D/,"").slice(-1);setOtp(n);if(v&&i<5)refs.current[i+1]?.focus();};
+  const progress=(t,c)=>(
+    <div style={{display:"flex",gap:6,marginBottom:28}}>
+      {Array.from({length:t},(_,i)=><div key={i} style={{flex:1,height:3,borderRadius:2,background:i<c?T.primary:T.border,transition:"background .3s"}}/>)}
+    </div>
+  );
+  if(step===3) return(
+    <div style={{minHeight:"100vh",paddingTop:64,display:"flex",alignItems:"center",justifyContent:"center",padding:"80px 24px"}}>
+      <div style={{width:"100%",maxWidth:440,textAlign:"center"}} className="fade">
+        <div style={{width:96,height:96,borderRadius:"50%",background:"#00C56618",border:`3px solid ${T.success}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,margin:"0 auto 24px"}}>✅</div>
+        <h1 style={{fontSize:28,fontWeight:800,color:T.success,marginBottom:12}}>¡Cuenta creada!</h1>
+        <p style={{color:T.muted,lineHeight:1.8,marginBottom:28}}>
+          Hola <strong style={{color:T.text}}>{form.nombre}</strong>, tu cuenta como <strong style={{color:T.primary}}>{form.rol}</strong> está lista.<br/>
+          <span style={{fontSize:13}}>✔ Número verificado por SMS</span>
+        </p>
+        <Btn label="Empezar a usar Colectivo 🚀" onClick={()=>{setUser({...form,verificado:true});go("home");}}/>
+      </div>
+    </div>
+  );
+  if(step===2) return(
+    <div style={{minHeight:"100vh",paddingTop:64,display:"flex",alignItems:"center",justifyContent:"center",padding:"80px 24px"}}>
+      <div style={{width:"100%",maxWidth:440}} className="fade">
+        <button onClick={()=>setStep(1)} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:14,marginBottom:20,display:"flex",alignItems:"center",gap:6}}>← Volver</button>
+        {progress(3,1)}
+        <h1 style={{fontSize:26,fontWeight:800,marginBottom:6}}>Código de verificación</h1>
+        <p style={{color:T.muted,marginBottom:28,fontSize:14}}>SMS enviado a <strong style={{color:T.text}}>+57 {form.tel}</strong></p>
+        <div style={{display:"flex",gap:10,justifyContent:"center",marginBottom:28}}>
+          {otp.map((v,i)=>(
+            <input key={i} ref={el=>refs.current[i]=el} maxLength={1} value={v}
+              onChange={e=>setD(i,e.target.value)} onKeyDown={e=>{if(e.key==="Backspace"&&!v&&i>0)refs.current[i-1]?.focus();}}
+              style={{width:52,height:62,textAlign:"center",fontSize:26,fontWeight:700,background:T.card2,border:`2px solid ${v?T.primary:T.border}`,borderRadius:14,color:T.text,outline:"none"}}/>
+          ))}
+        </div>
+        <Btn label="Confirmar código" onClick={()=>otp.join("").length===6&&setStep(3)} disabled={otp.join("").length<6}/>
+        <p style={{textAlign:"center",color:T.muted,fontSize:13,marginTop:14}}>Demo: <span style={{color:T.primary,cursor:"pointer"}} onClick={()=>setOtp(["1","2","3","4","5","6"])}>Auto-rellenar</span></p>
+      </div>
+    </div>
+  );
+  return(
+    <div style={{minHeight:"100vh",paddingTop:64,display:"flex",alignItems:"center",justifyContent:"center",padding:"80px 24px"}}>
+      <div style={{width:"100%",maxWidth:480}} className="fade">
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <h1 style={{fontSize:28,fontWeight:800,marginBottom:8}}>Crear cuenta en Colectivo</h1>
+          <p style={{color:T.muted,fontSize:14}}>Gratis · Solo 2 minutos</p>
+        </div>
+        {progress(3,0)}
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:16,marginBottom:24}}>
+          {["🔒 Verificación por SMS","📸 Identidad verificada","🆘 Botón de pánico incluido","✔ Usuarios certificados"].map(f=>(
+            <div key={f} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.border}`}}>
+              <span>{f.slice(0,2)}</span><span style={{color:T.text2,fontSize:13}}>{f.slice(2)}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:18}}>
+          <div>
+            <label style={lbl}>Nombre completo</label>
+            <input placeholder="Tu nombre" value={form.nombre} onChange={e=>setForm({...form,nombre:e.target.value})} style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>Celular</label>
+            <input placeholder="300 000 0000" type="tel" value={form.tel} onChange={e=>setForm({...form,tel:e.target.value.replace(/\D/,"")})} style={inp}/>
+          </div>
+        </div>
+        <div style={{marginBottom:18}}>
+          <label style={lbl}>Departamento</label>
+          <select value={form.depto} onChange={e=>setForm({...form,depto:e.target.value})} style={inp}>
+            {Object.keys(DEPTOS).map(d=><option key={d}>{d}</option>)}
+          </select>
+        </div>
+        <div style={{marginBottom:24}}>
+          <label style={lbl}>¿Cómo usarás Colectivo?</label>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            {[["pasajero","🙋","Pasajero","Busco cupo en rutas"],["conductor","🚗","Conductor","Ofrezco cupos en mi vehículo"]].map(([v,icon,title,sub])=>(
+              <button key={v} onClick={()=>setForm({...form,rol:v})} style={{padding:"18px 12px",borderRadius:14,cursor:"pointer",textAlign:"center",border:`2px solid ${form.rol===v?T.primary:T.border}`,background:form.rol===v?T.primary+"18":T.card}}>
+                <div style={{fontSize:28}}>{icon}</div>
+                <div style={{fontWeight:700,fontSize:14,marginTop:8,color:form.rol===v?T.primary:T.text}}>{title}</div>
+                <div style={{fontSize:12,marginTop:3,color:T.muted}}>{sub}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+        <Btn label="Enviar código SMS →" onClick={()=>form.nombre&&form.tel&&form.rol&&setStep(2)} disabled={!form.nombre||!form.tel.length||!form.rol}/>
+        <p style={{textAlign:"center",marginTop:18,fontSize:14,color:T.muted}}>¿Ya tienes cuenta? <span style={{color:T.primary,cursor:"pointer",fontWeight:600}} onClick={()=>go("login")}>Ingresar</span></p>
+      </div>
+    </div>
+  );
+}
+
+function Home(){
+  const {go,user,routes}=useApp();
+  return(
+    <div style={{minHeight:"100vh",paddingTop:64}} className="fade">
+      {/* Header */}
+      <div style={{background:"linear-gradient(180deg,#1A0D00,#0D0F17)",padding:"40px 24px 32px"}}>
+        <div style={{maxWidth:1200,margin:"0 auto"}}>
+          <p style={{color:T.muted,fontSize:14,marginBottom:4}}>Bienvenido de vuelta</p>
+          <h1 style={{fontSize:28,fontWeight:800,color:T.primary}}>{user?.nombre} 👋</h1>
+          <p style={{color:T.text2,marginTop:4,fontSize:14}}>{user?.depto} · {user?.rol==="conductor"?"Conductor":"Pasajero"}</p>
+        </div>
+      </div>
+      <div style={{maxWidth:1200,margin:"0 auto",padding:"32px 24px"}}>
+        {/* Quick actions */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16,marginBottom:40}}>
+          {[
+            {icon:"🔍",title:"Buscar cupo",sub:"Ver rutas disponibles",color:T.success,dest:"rutas"},
+            {icon:"🗺️",title:"Publicar ruta",sub:"Como conductor o pasajero",color:T.primary,dest:"publicar"},
+            {icon:"📋",title:"Mis publicaciones",sub:"Ver y gestionar mis rutas",color:"#7C6FFF",dest:"mis-rutas"},
+            {icon:"👤",title:"Mi perfil",sub:"Datos y configuración",color:T.text2,dest:"perfil"},
+          ].map(c=>(
+            <div key={c.dest} onClick={()=>go(c.dest)} style={{background:T.card,borderRadius:16,padding:20,border:`1px solid ${c.color}33`,cursor:"pointer",transition:"all .15s"}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=c.color+"88";e.currentTarget.style.transform="translateY(-2px)";}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=c.color+"33";e.currentTarget.style.transform="translateY(0)";}}>
+              <div style={{width:48,height:48,borderRadius:14,background:c.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,marginBottom:14}}>{c.icon}</div>
+              <p style={{fontWeight:700,fontSize:15,marginBottom:4}}>{c.title}</p>
+              <p style={{color:T.muted,fontSize:13}}>{c.sub}</p>
+            </div>
+          ))}
+        </div>
+        {/* Rutas recientes */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <h2 style={{fontSize:20,fontWeight:800}}>Rutas activas ahora</h2>
+          <button onClick={()=>go("rutas")} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:10,padding:"7px 16px",color:T.primary,fontSize:13,fontWeight:600,cursor:"pointer"}}>Ver todas →</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
+          {routes.slice(0,4).map(r=><RouteCard key={r.id} r={r} onTap={()=>go("detalle",r)} compact/>)}
+        </div>
+      </div>
+      <PanicBtn/>
+    </div>
+  );
+}
+
+function Rutas(){
+  const {go,routes}=useApp();
+  const [depto,setDepto]=useState("Atlántico");
+  const [q,setQ]=useState("");
+  const [rolF,setRolF]=useState("todos");
+  const list=routes.filter(r=>r.depto===depto&&(q===""||r.origen.toLowerCase().includes(q.toLowerCase())||r.destino.toLowerCase().includes(q.toLowerCase()))&&(rolF==="todos"||r.rol===rolF));
+  return(
+    <div style={{minHeight:"100vh",paddingTop:64}} className="fade">
+      <div style={{maxWidth:1200,margin:"0 auto",padding:"32px 24px"}}>
+        <h1 style={{fontSize:26,fontWeight:800,marginBottom:4}}>Buscar cupo</h1>
+        <p style={{color:T.muted,marginBottom:28,fontSize:14}}>Encuentra tu ruta ideal en los 3 departamentos</p>
+        {/* Filtros */}
+        <div style={{background:T.card,borderRadius:16,border:`1px solid ${T.border}`,padding:20,marginBottom:28}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:14}}>
+            <div>
+              <label style={lbl}>Destino</label>
+              <div style={{display:"flex",gap:8}}>
+                {Object.entries(DEPTOS).map(([d,{cap}])=>(
+                  <button key={d} onClick={()=>{setDepto(d);setQ("");}} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",border:`2px solid ${depto===d?T.primary:T.border}`,background:depto===d?T.primary+"22":T.card2,color:depto===d?T.primary:T.muted,fontSize:12,fontWeight:700}}>{cap}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label style={lbl}>Tipo</label>
+              <div style={{display:"flex",gap:8}}>
+                {[["todos","Todos"],["conductor","Conductores"],["pasajero","Pasajeros"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setRolF(v)} style={{flex:1,padding:"10px 4px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${rolF===v?T.primary:T.border}`,background:rolF===v?T.primary+"22":T.card2,color:rolF===v?T.primary:T.muted,fontSize:11,fontWeight:600}}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label style={lbl}>Buscar</label>
+              <input placeholder="🔍 Origen o destino..." value={q} onChange={e=>setQ(e.target.value)} style={inp}/>
+            </div>
+          </div>
+        </div>
+        <p style={{color:T.muted,fontSize:13,marginBottom:18}}>{list.length} publicaciones hacia {DEPTOS[depto].cap}</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
+          {list.map(r=><RouteCard key={r.id} r={r} onTap={()=>go("detalle",r)}/>)}
+          {list.length===0&&(
+            <div style={{textAlign:"center",padding:"60px 0",color:T.muted,gridColumn:"1/-1"}}>
+              <div style={{fontSize:56,marginBottom:16}}>🔎</div>
+              <p style={{fontWeight:600,fontSize:16,color:T.text}}>Sin resultados</p>
+              <p style={{fontSize:14,marginTop:6}}>Intenta con otro filtro o destino</p>
+            </div>
+          )}
+        </div>
+      </div>
+      <PanicBtn/>
+    </div>
+  );
+}
+
+function Publicar(){
+  const {go,user,addRoute}=useApp();
+  const [rol,setRol]=useState(user?.rol||"");
+  const [depto,setDepto]=useState(user?.depto||"Atlántico");
+  const [form,setForm]=useState({origen:"",destino:"",hora:"",fecha:"",cupos:"3",vehiculo:"Sedan",precio:""});
+  const [done,setDone]=useState(false);
+  const [newR,setNewR]=useState(null);
+  const cap=DEPTOS[depto].cap;
+  const all=[cap,...DEPTOS[depto].pueblos];
+  const sug=form.origen?priceSug(form.origen,form.vehiculo,form.hora):0;
+  const mult=form.hora?(()=>{const h=parseInt(form.hora.split(":")[0]);if((h>=5&&h<8)||(h>=17&&h<20))return 1.10;if(h>=21||h<5)return 1.15;return 1;})():1;
+  useEffect(()=>{if(form.origen)setForm(f=>({...f,precio:String(priceSug(f.origen,f.vehiculo,f.hora))}));},[form.origen,form.vehiculo,form.hora]);
+  const valid=rol&&form.origen&&form.destino&&form.hora&&form.precio&&form.origen!==form.destino;
+  const publish=()=>{
+    if(!valid)return;
+    const r={id:"u"+Date.now(),nombre:user?.nombre||"Yo",origen:form.origen,destino:form.destino,hora:form.hora,cupos:parseInt(form.cupos),precio:parseInt(form.precio),vehiculo:form.vehiculo,cal:5.0,depto,rol,verificado:user?.verificado||false,fecha:form.fecha||"Hoy"};
+    addRoute(r);setNewR(r);setDone(true);
+  };
+  if(done&&newR) return(
+    <div style={{minHeight:"100vh",paddingTop:64,display:"flex",alignItems:"center",justifyContent:"center",padding:"80px 24px"}}>
+      <div style={{width:"100%",maxWidth:520,textAlign:"center"}} className="fade">
+        <div style={{width:96,height:96,borderRadius:"50%",background:"#00C56618",border:`3px solid ${T.success}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,margin:"0 auto 24px"}}>✅</div>
+        <h1 style={{fontSize:28,fontWeight:800,color:T.success,marginBottom:12}}>¡Ruta publicada!</h1>
+        <p style={{color:T.muted,lineHeight:1.8}}>
+          Como <Tag text={rol==="conductor"?"🚗 Conductor":"🙋 Pasajero"} color={rol==="conductor"?T.primary:T.success}/>{" "}
+          <strong style={{color:T.text}}>{newR.origen} → {newR.destino}</strong> · <strong style={{color:T.primary}}>{newR.hora}</strong>
+        </p>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:20,marginTop:24,textAlign:"left"}}>
+          {[["Precio por cupo",`$${newR.precio.toLocaleString()} COP`,true],["Comisión Colectivo (10%)",`$${Math.round(newR.precio*.1).toLocaleString()}`],["Recibirás",`$${Math.round(newR.precio*.9).toLocaleString()} COP`,true]].map(([l,v,a])=>(
+            <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${T.border}`}}>
+              <span style={{color:T.muted,fontSize:14}}>{l}</span>
+              <span style={{fontWeight:700,fontSize:14,color:a?T.primary:T.text}}>{v}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:12,marginTop:24}}>
+          <Btn label="Ver rutas" onClick={()=>go("rutas")} outline style={{flex:1,width:"auto"}}/>
+          <Btn label="Ir al inicio" onClick={()=>go("home")} style={{flex:1,width:"auto"}}/>
+        </div>
+      </div>
+    </div>
+  );
+  return(
+    <div style={{minHeight:"100vh",paddingTop:64,padding:"80px 24px 48px"}} className="fade">
+      <div style={{maxWidth:640,margin:"0 auto"}}>
+        <h1 style={{fontSize:26,fontWeight:800,marginBottom:4}}>Publicar ruta</h1>
+        <p style={{color:T.muted,marginBottom:32,fontSize:14}}>Tanto conductores como pasajeros pueden publicar</p>
+        {/* Rol */}
+        <div style={{marginBottom:24}}>
+          <label style={lbl}>Publico como</label>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            {[["conductor","🚗","Conductor","Tengo vehículo y ofrezco cupos"],["pasajero","🙋","Pasajero","Busco cupo, propongo mi ruta"]].map(([v,icon,title,sub])=>(
+              <button key={v} onClick={()=>setRol(v)} style={{padding:"20px 14px",borderRadius:16,cursor:"pointer",textAlign:"center",border:`2px solid ${rol===v?T.primary:T.border}`,background:rol===v?T.primary+"18":T.card}}>
+                <div style={{fontSize:32}}>{icon}</div>
+                <div style={{fontWeight:700,fontSize:14,marginTop:10,color:rol===v?T.primary:T.text}}>{title}</div>
+                <div style={{fontSize:12,marginTop:4,color:T.muted}}>{sub}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Depto */}
+        <div style={{marginBottom:18}}>
+          <label style={lbl}>Departamento</label>
+          <div style={{display:"flex",gap:10}}>
+            {Object.keys(DEPTOS).map(d=>(
+              <button key={d} onClick={()=>{setDepto(d);setForm(f=>({...f,origen:"",destino:""}));}} style={{flex:1,padding:"10px 6px",borderRadius:12,cursor:"pointer",border:`2px solid ${depto===d?T.primary:T.border}`,background:depto===d?T.primary+"22":T.card2,color:depto===d?T.primary:T.muted,fontSize:12,fontWeight:700}}>{d}</button>
+            ))}
+          </div>
+        </div>
+        {/* Origen / Destino */}
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:18,marginBottom:18}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div>
+              <label style={lbl}>📍 Origen</label>
+              <select value={form.origen} onChange={e=>setForm({...form,origen:e.target.value,destino:""})} style={inp}>
+                <option value="">Selecciona origen</option>
+                {all.map(m=><option key={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>🏁 Destino</label>
+              <select value={form.destino} onChange={e=>setForm({...form,destino:e.target.value})} style={inp}>
+                <option value="">Selecciona destino</option>
+                {all.filter(m=>m!==form.origen).map(m=><option key={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+        {/* Fecha y hora */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:18}}>
+          <div>
+            <label style={lbl}>📅 Fecha</label>
+            <input type="date" value={form.fecha} onChange={e=>setForm({...form,fecha:e.target.value})} style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>⏰ Hora de salida</label>
+            <input type="time" value={form.hora} onChange={e=>setForm({...form,hora:e.target.value})} style={inp}/>
+          </div>
+        </div>
+        {form.hora&&(
+          <div style={{background:mult>1?T.primary+"18":T.card,border:`1px solid ${mult>1?T.primary+"44":T.border}`,borderRadius:10,padding:"10px 14px",marginBottom:18}}>
+            <p style={{fontSize:13,fontWeight:600,color:mult>1?T.primary:T.muted}}>
+              {mult===1.10?"⚡ Hora pico (+10% al precio)":mult===1.15?"🌙 Nocturno (+15% al precio)":"✅ Tarifa normal"}
+            </p>
+          </div>
+        )}
+        {/* Conductor extras */}
+        {rol==="conductor"&&(
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:18}}>
+              <div>
+                <label style={lbl}>💺 Cupos disponibles</label>
+                <div style={{display:"flex",gap:8}}>
+                  {["1","2","3","4"].map(n=>(
+                    <button key={n} onClick={()=>setForm({...form,cupos:n})} style={{flex:1,padding:"13px 0",borderRadius:12,cursor:"pointer",fontSize:18,fontWeight:700,border:`2px solid ${form.cupos===n?T.primary:T.border}`,background:form.cupos===n?T.primary+"22":T.card2,color:form.cupos===n?T.primary:T.muted}}>{n}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label style={lbl}>🚗 Vehículo</label>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  {["Sedan","Van","Camioneta","Moto"].map(v=>(
+                    <button key={v} onClick={()=>setForm({...form,vehiculo:v})} style={{padding:"10px 4px",borderRadius:10,cursor:"pointer",textAlign:"center",border:`2px solid ${form.vehiculo===v?T.primary:T.border}`,background:form.vehiculo===v?T.primary+"22":T.card2,color:form.vehiculo===v?T.primary:T.muted,fontSize:11}}>
+                      <div style={{fontSize:18}}>{VI[v]}</div>
+                      <div style={{fontWeight:600,marginTop:3}}>{v}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+        {/* Precio sugerido */}
+        {form.origen&&(
+          <div style={{background:T.primary+"18",border:`1px solid ${T.primary}44`,borderRadius:16,padding:18,marginBottom:18}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <p style={{color:T.muted,fontSize:13}}>💡 Precio sugerido</p>
+                <p style={{fontWeight:800,fontSize:26,color:T.primary,marginTop:4}}>${sug.toLocaleString()} COP</p>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <p style={{color:T.muted,fontSize:12}}>{DIST[form.origen]||"?"}km × $160/km</p>
+                {mult>1&&<p style={{color:T.primary,fontSize:12,fontWeight:600}}>+{Math.round((mult-1)*100)}% aplicado</p>}
+                <p style={{color:T.muted,fontSize:11,marginTop:4}}>Rango: ${Math.round(sug*.85).toLocaleString()} – ${Math.round(sug*1.15).toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        <div style={{marginBottom:28}}>
+          <label style={lbl}>💰 Precio por cupo (COP)</label>
+          <input type="number" placeholder="Ingresa el precio" value={form.precio} onChange={e=>setForm({...form,precio:e.target.value})} style={inp}/>
+        </div>
+        <Btn label="Publicar ruta 🚀" onClick={publish} disabled={!valid}/>
+      </div>
+    </div>
+  );
+}
+
+function Detalle({ruta}){
+  const {go}=useApp();
+  const [oferta,setOferta]=useState(ruta.precio);
+  const [done,setDone]=useState(false);
+  const [chatOpen,setChatOpen]=useState(false);
+  const [msgs,setMsgs]=useState([{from:"them",text:`Hola! Soy ${ruta.nombre}. ¿Tienes alguna pregunta sobre el viaje?`}]);
+  const [msg,setMsg]=useState("");
+  const base=(DIST[ruta.origen]||50)*160;
+  const sendMsg=()=>{
+    if(!msg.trim())return;
+    setMsgs(p=>[...p,{from:"me",text:msg}]);
+    setMsg("");
+    setTimeout(()=>setMsgs(p=>[...p,{from:"them",text:"Perfecto, te espero puntual. ¿En qué punto te recojo?"}]),900);
+  };
+  if(done) return(
+    <div style={{minHeight:"100vh",paddingTop:64,display:"flex",alignItems:"center",justifyContent:"center",padding:"80px 24px"}}>
+      <div style={{width:"100%",maxWidth:520,textAlign:"center"}} className="fade">
+        <div style={{width:96,height:96,borderRadius:"50%",background:"#00C56618",border:`3px solid ${T.success}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,margin:"0 auto 24px"}}>🎉</div>
+        <h1 style={{fontSize:28,fontWeight:800,color:T.success,marginBottom:12}}>¡{ruta.rol==="pasajero"?"Oferta enviada":"Cupo reservado"}!</h1>
+        <p style={{color:T.muted,lineHeight:1.8}}>
+          <strong style={{color:T.text}}>{ruta.origen} → {ruta.destino}</strong><br/>
+          Con <strong style={{color:T.text}}>{ruta.nombre}</strong> · <strong style={{color:T.primary}}>{ruta.hora}</strong>
+        </p>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:20,marginTop:20,textAlign:"left"}}>
+          {[["Precio acordado",`$${oferta.toLocaleString()} COP`,true],["Comisión Colectivo (10%)",`$${Math.round(oferta*.1).toLocaleString()}`],["Pago al conductor",`$${Math.round(oferta*.9).toLocaleString()} COP`]].map(([l,v,a])=>(
+            <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${T.border}`}}>
+              <span style={{color:T.muted,fontSize:14}}>{l}</span>
+              <span style={{fontWeight:700,fontSize:14,color:a?T.primary:T.text}}>{v}</span>
+            </div>
+          ))}
+          <div style={{marginTop:14,background:T.success+"15",borderRadius:10,padding:12}}>
+            <p style={{color:T.success,fontSize:13,fontWeight:600}}>📱 Usa el chat para coordinar el punto de encuentro</p>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:12,marginTop:24}}>
+          <Btn label="💬 Abrir chat" onClick={()=>setChatOpen(true)} outline style={{flex:1,width:"auto"}}/>
+          <Btn label="Inicio" onClick={()=>go("home")} style={{flex:1,width:"auto"}}/>
+        </div>
+        {chatOpen&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+            <div style={{width:"100%",maxWidth:500,background:T.card,borderRadius:"20px 20px 0 0",display:"flex",flexDirection:"column",height:"70vh"}}>
+              <div style={{padding:"16px 20px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12}}>
+                <button onClick={()=>setChatOpen(false)} style={{background:"none",border:"none",color:T.text,fontSize:20,cursor:"pointer"}}>✕</button>
+                <Avatar size={36} name={ruta.nombre}/>
+                <div><p style={{fontWeight:700}}>{ruta.nombre}</p><p style={{color:T.success,fontSize:12}}>🟢 En línea</p></div>
+              </div>
+              <div style={{flex:1,padding:16,overflowY:"auto",display:"flex",flexDirection:"column",gap:10}}>
+                {msgs.map((m,i)=>(
+                  <div key={i} style={{alignSelf:m.from==="me"?"flex-end":"flex-start",background:m.from==="me"?T.primary:T.card2,color:m.from==="me"?"#0D0F17":T.text,borderRadius:14,padding:"10px 14px",maxWidth:"75%",fontSize:14}}>{m.text}</div>
+                ))}
+              </div>
+              <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,display:"flex",gap:10}}>
+                <input value={msg} onChange={e=>setMsg(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMsg()} placeholder="Escribe un mensaje..." style={{...inp,flex:1,padding:"12px 14px",fontSize:14}}/>
+                <button onClick={sendMsg} style={{background:T.primary,border:"none",borderRadius:12,padding:"0 18px",cursor:"pointer",fontSize:20,color:"#0D0F17"}}>➤</button>
+              </div>
+            </div>
+          </div>
+        )}
+        <PanicBtn/>
+      </div>
+    </div>
+  );
+  return(
+    <div style={{minHeight:"100vh",paddingTop:64,padding:"32px 24px 48px"}} className="fade">
+      <div style={{maxWidth:760,margin:"0 auto"}}>
+        <button onClick={()=>go("rutas")} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:14,marginBottom:24,display:"flex",alignItems:"center",gap:6}}>← Volver a rutas</button>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,alignItems:"start"}}>
+          {/* Left */}
+          <div>
+            {/* Ruta visual */}
+            <div style={{background:`linear-gradient(135deg,#071A10,#070D1A)`,borderRadius:20,border:`1px solid ${T.border}`,padding:"24px 28px",marginBottom:20,display:"flex",alignItems:"center",justifyContent:"space-between",position:"relative"}}>
+              <div style={{textAlign:"center"}}>
+                <div style={{width:12,height:12,borderRadius:"50%",background:T.success,margin:"0 auto 8px",boxShadow:`0 0 10px ${T.success}`}}/>
+                <p style={{color:T.success,fontSize:14,fontWeight:700}}>{ruta.origen}</p>
+              </div>
+              <div style={{flex:1,margin:"0 20px",borderTop:`2px dashed ${T.border}`,position:"relative"}}>
+                <div style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:T.bg,padding:"0 10px",fontSize:22}}>{VI[ruta.vehiculo]||"🚗"}</div>
+              </div>
+              <div style={{textAlign:"center"}}>
+                <div style={{width:12,height:12,borderRadius:2,background:T.primary,margin:"0 auto 8px",boxShadow:`0 0 10px ${T.primary}`}}/>
+                <p style={{color:T.primary,fontSize:14,fontWeight:700}}>{ruta.destino}</p>
+              </div>
+              <div style={{position:"absolute",top:10,right:14,background:T.card,borderRadius:8,padding:"4px 10px"}}>
+                <p style={{color:T.muted,fontSize:11,fontWeight:600}}>{DIST[ruta.origen]||"?"} km</p>
+              </div>
+            </div>
+            {/* Persona */}
+            <div style={{background:T.card,borderRadius:20,border:`1px solid ${T.border}`,padding:20}}>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
+                <Avatar size={56} name={ruta.nombre}/>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
+                    <p style={{fontWeight:700,fontSize:17}}>{ruta.nombre}</p>
+                    <Badge ok={ruta.verificado}/>
+                  </div>
+                  <Stars v={ruta.cal}/>
+                  <p style={{color:T.muted,fontSize:12,marginTop:4}}>{ruta.rol==="conductor"?"🚗 Conductor":"🙋 Pasajero buscando cupo"}</p>
+                </div>
+                <button onClick={()=>setChatOpen(true)} style={{background:T.success+"22",border:`1px solid ${T.success}44`,borderRadius:12,padding:"10px 14px",cursor:"pointer",color:T.success,fontSize:22}}>💬</button>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                {[["⏰",ruta.hora,"Salida"],["💺",`${ruta.cupos||1}`,ruta.rol==="conductor"?"Cupos":"Necesita"],[VI[ruta.vehiculo]||"🚗",ruta.vehiculo||"Auto","Vehículo"]].map(([icon,val,lbl_])=>(
+                  <div key={lbl_} style={{background:T.card2,borderRadius:12,padding:"12px 8px",textAlign:"center"}}>
+                    <div style={{fontSize:20}}>{icon}</div>
+                    <p style={{fontWeight:700,fontSize:13,marginTop:5}}>{val}</p>
+                    <p style={{color:T.muted,fontSize:11,marginTop:2}}>{lbl_}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          {/* Right - Precio */}
+          <div style={{background:T.card,borderRadius:20,border:`1px solid ${T.border}`,padding:24,position:"sticky",top:84}}>
+            <p style={{fontWeight:700,fontSize:16,marginBottom:16}}>💰 Precio y negociación</p>
+            <div style={{background:T.primary+"18",borderRadius:12,padding:16,marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <div>
+                  <p style={{color:T.muted,fontSize:12}}>Precio base ({DIST[ruta.origen]||"?"}km × $160)</p>
+                  <p style={{fontWeight:800,fontSize:22,color:T.primary,marginTop:4}}>${base.toLocaleString()} COP</p>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <p style={{color:T.muted,fontSize:12}}>Publicado</p>
+                  <p style={{fontWeight:700,fontSize:18,color:T.text,marginTop:4}}>${ruta.precio.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+            <p style={{color:T.muted,fontSize:13,marginBottom:12}}>Selecciona o escribe tu oferta:</p>
+            <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+              {[Math.max(500,ruta.precio-1000),ruta.precio,ruta.precio+500].map(p=>(
+                <button key={p} onClick={()=>setOferta(p)} style={{padding:"9px 14px",borderRadius:10,cursor:"pointer",border:`2px solid ${oferta===p?T.primary:T.border}`,background:oferta===p?T.primary+"22":T.card2,color:oferta===p?T.primary:T.muted,fontSize:13,fontWeight:600}}>${p.toLocaleString()}</button>
+              ))}
+            </div>
+            <input type="number" value={oferta} onChange={e=>setOferta(parseInt(e.target.value)||ruta.precio)} style={{...inp,marginBottom:8}}/>
+            <p style={{color:T.muted,fontSize:12,marginBottom:20}}>Rango: ${Math.round(ruta.precio*.85).toLocaleString()} – ${Math.round(ruta.precio*1.15).toLocaleString()} COP</p>
+            <Btn label={`${ruta.rol==="pasajero"?"Ofrecer cupo":"Reservar cupo"} · $${(oferta||0).toLocaleString()} 🚀`} onClick={()=>setDone(true)}/>
+          </div>
+        </div>
+      </div>
+      <PanicBtn/>
+    </div>
+  );
+}
+
+function MisRutas(){
+  const {go,myRoutes}=useApp();
+  return(
+    <div style={{minHeight:"100vh",paddingTop:64,padding:"32px 24px"}} className="fade">
+      <div style={{maxWidth:900,margin:"0 auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28}}>
+          <div>
+            <h1 style={{fontSize:26,fontWeight:800}}>Mis publicaciones</h1>
+            <p style={{color:T.muted,marginTop:4,fontSize:14}}>Gestiona tus rutas publicadas</p>
+          </div>
+          <Btn label="+ Publicar nueva" onClick={()=>go("publicar")} full={false} style={{padding:"10px 20px"}}/>
+        </div>
+        {myRoutes.length===0?(
+          <div style={{textAlign:"center",padding:"80px 0",color:T.muted}}>
+            <div style={{fontSize:64,marginBottom:20}}>📋</div>
+            <p style={{fontWeight:700,fontSize:18,color:T.text,marginBottom:8}}>Sin publicaciones aún</p>
+            <p style={{fontSize:14,marginBottom:28}}>Publica tu primera ruta y comienza a conectar</p>
+            <Btn label="Publicar ruta 🚀" onClick={()=>go("publicar")} full={false} style={{padding:"12px 32px"}}/>
+          </div>
+        ):(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:16}}>
+            {myRoutes.map(r=>(
+              <div key={r.id} style={{background:T.card,borderRadius:16,border:`1px solid ${T.border}`,padding:18}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+                  <div>
+                    <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                      <Tag text={r.rol==="conductor"?"🚗 Conductor":"🙋 Pasajero"} color={r.rol==="conductor"?T.primary:T.success}/>
+                      <Tag text="🟢 Activa" color={T.success}/>
+                    </div>
+                    <p style={{fontWeight:700,fontSize:15}}>{r.origen} → {r.destino}</p>
+                    <p style={{color:T.muted,fontSize:13,marginTop:3}}>⏰ {r.hora} · {VI[r.vehiculo]} {r.vehiculo}</p>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <p style={{fontWeight:800,fontSize:16,color:T.primary}}>${r.precio.toLocaleString()}</p>
+                    <p style={{color:T.muted,fontSize:11}}>por cupo</p>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:10}}>
+                  <button style={{flex:1,padding:"10px",borderRadius:10,background:T.card2,border:`1px solid ${T.border}`,color:T.text,fontSize:13,cursor:"pointer",fontWeight:600}}>✏️ Editar</button>
+                  <button style={{flex:1,padding:"10px",borderRadius:10,background:T.danger+"18",border:`1px solid ${T.danger}44`,color:T.danger,fontSize:13,cursor:"pointer",fontWeight:600}}>🗑️ Eliminar</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <PanicBtn/>
+    </div>
+  );
+}
+
+function Perfil(){
+  const {go,user,setUser}=useApp();
+  return(
+    <div style={{minHeight:"100vh",paddingTop:64,padding:"32px 24px"}} className="fade">
+      <div style={{maxWidth:800,margin:"0 auto"}}>
+        <h1 style={{fontSize:26,fontWeight:800,marginBottom:28}}>Mi perfil</h1>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:24,alignItems:"start"}}>
+          {/* Left - datos */}
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:20,padding:24,textAlign:"center"}}>
+            <Avatar size={80} name={user?.nombre||"?"}/>
+            <h2 style={{fontSize:20,fontWeight:800,marginTop:14}}>{user?.nombre}</h2>
+            <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
+              <Badge ok={user?.verificado}/>
+              <Tag text={user?.rol==="conductor"?"🚗 Conductor":"🙋 Pasajero"}/>
+            </div>
+            <p style={{color:T.muted,fontSize:13,marginTop:8}}>{user?.depto}</p>
+            <div style={{display:"flex",gap:10,marginTop:20}}>
+              {[["12","Viajes"],["4.9","Calificación"]].map(([v,l])=>(
+                <div key={l} style={{flex:1,background:T.card2,borderRadius:12,padding:12,textAlign:"center"}}>
+                  <p style={{fontSize:18,fontWeight:800,color:T.primary}}>{v}</p>
+                  <p style={{color:T.muted,fontSize:11,marginTop:2}}>{l}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Right - menú */}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {[
+              ["📸","Actualizar foto de verificación","Cambia tu selfie de identidad"],
+              ["📋","Mis publicaciones","Ver y gestionar rutas"],
+              ["🔔","Notificaciones","Alertas y avisos"],
+              ["🔒","Documentos","Licencia, SOAT, papeles del vehículo"],
+              ["💳","Pagos · Nequi / Daviplata","Configura tus métodos de pago"],
+              ["⭐","Calificaciones","Tu historial de valoraciones"],
+              ["⚙️","Configuración","Preferencias de la cuenta"],
+              ["❓","Ayuda y soporte","Centro de ayuda"],
+            ].map(([icon,title,sub])=>(
+              <div key={title} onClick={title==="Mis publicaciones"?()=>go("mis-rutas"):undefined} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"16px 18px",display:"flex",alignItems:"center",gap:14,cursor:"pointer",transition:"border-color .15s"}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor=T.primary+"44"}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+                <span style={{fontSize:22,flexShrink:0}}>{icon}</span>
+                <div style={{flex:1}}>
+                  <p style={{fontWeight:600,fontSize:14}}>{title}</p>
+                  <p style={{color:T.muted,fontSize:12,marginTop:2}}>{sub}</p>
+                </div>
+                <span style={{color:T.muted,fontSize:18}}>›</span>
+              </div>
+            ))}
+            <div style={{background:T.danger+"15",border:`1px solid ${T.danger}33`,borderRadius:16,padding:18,marginTop:4}}>
+              <p style={{fontWeight:700,color:T.danger,marginBottom:6}}>🆘 Contacto de emergencia</p>
+              <p style={{color:T.muted,fontSize:13,lineHeight:1.6,marginBottom:12}}>Si activas el botón de pánico, esta persona recibe tu ubicación GPS en tiempo real.</p>
+              <button style={{padding:"10px 18px",borderRadius:10,background:T.danger+"22",border:`1px solid ${T.danger}`,color:T.danger,fontSize:13,cursor:"pointer",fontWeight:600}}>+ Agregar contacto</button>
+            </div>
+            <Btn label="Cerrar sesión" onClick={()=>{setUser(null);go("landing");}} outline color={T.danger} style={{marginTop:4}}/>
+          </div>
+        </div>
+      </div>
+      <PanicBtn/>
+    </div>
+  );
+}
+
+// ── ROOT ──────────────────────────────────────────────────────
+export default function App(){
+  const [page,setPage]=useState("landing");
+  const [pageData,setPageData]=useState(null);
+  const [user,setUser]=useState(null);
+  const [routes,setRoutes]=useState(SEED);
+  const [myRoutes,setMyRoutes]=useState([]);
+
+  const go=(dest,data=null)=>{
+    if(!user&&!["landing","login","registro"].includes(dest)){
+      setPage("login"); setPageData(null); window.scrollTo(0,0); return;
+    }
+    setPage(dest); setPageData(data); window.scrollTo(0,0);
+  };
+
+  const addRoute=r=>{setRoutes(p=>[r,...p]);setMyRoutes(p=>[r,...p]);};
+
+  return(
+    <Ctx.Provider value={{page,go,user,setUser,routes,myRoutes,addRoute}}>
+      <style>{css}</style>
+      <Nav/>
+      {page==="landing"  && <Landing/>}
+      {page==="login"    && <Login/>}
+      {page==="registro" && <Registro/>}
+      {page==="home"     && <Home/>}
+      {page==="rutas"    && <Rutas/>}
+      {page==="publicar" && <Publicar/>}
+      {page==="detalle"  && pageData && <Detalle ruta={pageData}/>}
+      {page==="mis-rutas"&& <MisRutas/>}
+      {page==="perfil"   && <Perfil/>}
+    </Ctx.Provider>
+  );
+}
